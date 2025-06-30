@@ -71,20 +71,24 @@ Optionally, you can add it to a file called `.vscode/mcp.json` in your workspace
 
 ## Available Tools
 
-This enhanced version provides 4 tools:
+This enhanced version provides 9 tools:
 
-1. **read_notes** - Read contents of multiple notes (original functionality)
-2. **search_notes** - Search for notes by name/pattern (original functionality)  
+### Core Operations
+1. **read_notes** - Read contents of multiple notes
+2. **search_notes** - Search for notes by name/pattern
 3. **write_note** - Create or overwrite a note with content
 4. **append_note** - Append content to an existing note
 
-### Write/Append Tool Usage
+### Advanced Features
+5. **extract_links** - Extract all wiki links and markdown links from a note
+6. **find_backlinks** - Find all notes that link to a specific note
+7. **extract_metadata** - Extract frontmatter, inline fields, and tags from a note
+8. **search_by_tags** - Search for notes containing specific tags
+9. **create_link** - Create or update a wiki link from one note to another
 
-Both new tools require:
-- `path`: Relative path from vault root (must end in `.md`)
-- `content`: Markdown content to write/append
+### Tool Usage Examples
 
-Examples:
+#### Basic Operations
 ```javascript
 // Create a new note
 write_note({
@@ -96,5 +100,46 @@ write_note({
 append_note({
   path: "daily/2024-01-15.md", 
   content: "\n\n## Evening Reflection\nCompleted code review successfully."
+})
+
+// Read multiple notes
+read_notes({
+  paths: ["daily/2024-01-15.md", "projects/project-a.md"]
+})
+
+// Search for notes
+search_notes({
+  query: "project"
+})
+```
+
+#### Advanced Operations
+```javascript
+// Extract all links from a note
+extract_links({
+  path: "projects/project-a.md"
+})
+
+// Find all notes linking to this note
+find_backlinks({
+  path: "concepts/important-concept.md"
+})
+
+// Extract metadata (frontmatter, tags, inline fields)
+extract_metadata({
+  path: "projects/project-a.md"
+})
+
+// Search by tags
+search_by_tags({
+  tags: ["project", "active"],
+  matchAll: true  // require both tags
+})
+
+// Create a link between notes
+create_link({
+  fromPath: "daily/2024-01-15.md",
+  toPath: "projects/project-a.md",
+  linkText: "Project A Details"  // optional
 })
 ```
