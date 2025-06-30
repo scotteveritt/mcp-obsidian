@@ -1,19 +1,40 @@
-# Obsidian Model Context Protocol
+# Obsidian Model Context Protocol (Write-Enabled)
 
-[![smithery badge](https://smithery.ai/badge/mcp-obsidian)](https://smithery.ai/protocol/mcp-obsidian)
+This is an enhanced version of the original [mcp-obsidian](https://github.com/henrykmao/mcp-obsidian) that adds **write and append capabilities** to allow Claude Desktop (or any MCP client) to read, search, write, and modify any directory containing Markdown notes (such as an Obsidian vault).
 
-This is a connector to allow Claude Desktop (or any MCP client) to read and search any directory containing Markdown notes (such as an Obsidian vault).
+## New Features
+- ✅ **write_note**: Create or overwrite notes
+- ✅ **append_note**: Append content to existing notes
+- ✅ All original read/search functionality preserved
+- ✅ Automatic parent directory creation
+- ✅ Same security model as original
+
+## Credits
+Based on the original [mcp-obsidian](https://github.com/henrykmao/mcp-obsidian) by Henry Mao.
 
 ## Installation
 
 Make sure Claude Desktop and `npm` is installed.
 
-### Installing via Smithery
+### Installing via NPX (Recommended)
 
-To install Obsidian Model Context Protocol for Claude Desktop automatically via [Smithery](https://smithery.ai/protocol/mcp-obsidian):
+To install and run the enhanced version with write capabilities:
 
 ```bash
-npx @smithery/cli install mcp-obsidian --client claude
+npx mcp-obsidian-tools /path/to/your/vault
+```
+
+For Claude Desktop, add to your MCP settings:
+
+```json
+{
+  "mcpServers": {
+    "obsidian-tools": {
+      "command": "npx",
+      "args": ["-y", "mcp-obsidian-tools", "/path/to/your/vault"]
+    }
+  }
+}
 ```
 
 Then, restart Claude Desktop and you should see the following MCP tools listed:
@@ -21,10 +42,6 @@ Then, restart Claude Desktop and you should see the following MCP tools listed:
 ![image](./images/mcp-tools.png)
 
 ### Usage with VS Code
-
-For quick installation, use one of the one-click install buttons below:
-
-[![Install with NPX in VS Code](https://img.shields.io/badge/VS_Code-NPM-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=obsidian&inputs=%5B%7B%22type%22%3A%22promptString%22%2C%22id%22%3A%22vaultPath%22%2C%22description%22%3A%22Path%20to%20Obsidian%20vault%22%7D%5D&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22mcp-obsidian%22%2C%22%24%7Binput%3AvaultPath%7D%22%5D%7D) [![Install with NPX in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-NPM-24bfa5?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=obsidian&inputs=%5B%7B%22type%22%3A%22promptString%22%2C%22id%22%3A%22vaultPath%22%2C%22description%22%3A%22Path%20to%20Obsidian%20vault%22%7D%5D&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22mcp-obsidian%22%2C%22%24%7Binput%3AvaultPath%7D%22%5D%7D&quality=insiders)
 
 For manual installation, add the following JSON block to your User Settings (JSON) file in VS Code. You can do this by pressing `Ctrl + Shift + P` and typing `Preferences: Open User Settings (JSON)`.
 
@@ -43,11 +60,41 @@ Optionally, you can add it to a file called `.vscode/mcp.json` in your workspace
       }
     ],
     "servers": {
-      "obsidian": {
+      "obsidian-tools": {
         "command": "npx",
-        "args": ["-y", "mcp-obsidian", "${input:vaultPath}"]
+        "args": ["-y", "mcp-obsidian-tools", "${input:vaultPath}"]
       }
     }
   }
 }
+```
+
+## Available Tools
+
+This enhanced version provides 4 tools:
+
+1. **read_notes** - Read contents of multiple notes (original functionality)
+2. **search_notes** - Search for notes by name/pattern (original functionality)  
+3. **write_note** - Create or overwrite a note with content
+4. **append_note** - Append content to an existing note
+
+### Write/Append Tool Usage
+
+Both new tools require:
+- `path`: Relative path from vault root (must end in `.md`)
+- `content`: Markdown content to write/append
+
+Examples:
+```javascript
+// Create a new note
+write_note({
+  path: "daily/2024-01-15.md",
+  content: "# Daily Note\n\nToday's tasks:\n- Review code"
+})
+
+// Append to existing note
+append_note({
+  path: "daily/2024-01-15.md", 
+  content: "\n\n## Evening Reflection\nCompleted code review successfully."
+})
 ```

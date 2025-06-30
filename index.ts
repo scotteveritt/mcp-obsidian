@@ -124,6 +124,16 @@ const SearchNotesArgsSchema = z.object({
   query: z.string(),
 })
 
+const WriteNoteArgsSchema = z.object({
+  path: z.string(),
+  content: z.string(),
+})
+
+const AppendNoteArgsSchema = z.object({
+  path: z.string(),
+  content: z.string(),
+})
+
 const ToolInputSchema = ToolSchema.shape.inputSchema
 type ToolInput = z.infer<typeof ToolInputSchema>
 
@@ -207,6 +217,22 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           "that match the query.",
         inputSchema: zodToJsonSchema(SearchNotesArgsSchema) as ToolInput,
       },
+      {
+        name: "write_note",
+        description:
+          "Write content to a note file. Creates the file if it doesn't exist, " +
+          "or overwrites if it does. The path should be relative to the vault root " +
+          "and end with .md extension. Parent directories will be created if needed.",
+        inputSchema: zodToJsonSchema(WriteNoteArgsSchema) as ToolInput,
+      },
+      {
+        name: "append_note",
+        description:
+          "Append content to an existing note file. Creates the file if it doesn't exist. " +
+          "The path should be relative to the vault root and end with .md extension. " +
+          "Content is added with a newline separator if the file has existing content.",
+        inputSchema: zodToJsonSchema(AppendNoteArgsSchema) as ToolInput,
+      },
     ],
   }
 })
@@ -263,6 +289,68 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                   : ""),
             },
           ],
+        }
+      }
+      case "write_note": {
+        const parsed = WriteNoteArgsSchema.safeParse(args)
+        if (!parsed.success) {
+          throw new Error(`Invalid arguments for write_note: ${parsed.error}`)
+        }
+        
+        // Ensure the path ends with .md
+        if (!parsed.data.path.endsWith(".md")) {
+          throw new Error("Note path must end with .md extension")
+        }
+        
+        const fullPath = path.join(vaultDirectories[0], parsed.data.path)
+        const validPath = await validatePath(fullPath)
+        
+        // Create parent directory if it doesn't exist
+        const parentDir = path.dirname(validPath)
+        await fs.mkdir(parentDir, { recursive: true })
+        
+        // Write the file
+        await fs.writeFile(validPath, parsed.data.content, "utf-8")
+        
+        return {
+          content: [{ type: "text", text: `Successfully wrote note to ${parsed.data.path}` }],
+        }
+      }
+      case "append_note": {
+        const parsed = AppendNoteArgsSchema.safeParse(args)
+        if (!parsed.success) {
+          throw new Error(`Invalid arguments for append_note: ${parsed.error}`)
+        }
+        
+        // Ensure the path ends with .md
+        if (!parsed.data.path.endsWith(".md")) {
+          throw new Error("Note path must end with .md extension")
+        }
+        
+        const fullPath = path.join(vaultDirectories[0], parsed.data.path)
+        const validPath = await validatePath(fullPath)
+        
+        // Create parent directory if it doesn't exist
+        const parentDir = path.dirname(validPath)
+        await fs.mkdir(parentDir, { recursive: true })
+        
+        // Check if file exists and read existing content
+        let existingContent = ""
+        try {
+          existingContent = await fs.readFile(validPath, "utf-8")
+        } catch (error) {
+          // File doesn't exist, which is fine for append
+        }
+        
+        // Append content with proper separator
+        const newContent = existingContent
+          ? existingContent + "\n" + parsed.data.content
+          : parsed.data.content
+          
+        await fs.writeFile(validPath, newContent, "utf-8")
+        
+        return {
+          content: [{ type: "text", text: `Successfully appended to note at ${parsed.data.path}` }],
         }
       }
       default:
