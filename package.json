@@ -1,6 +1,6 @@
 {
 	"name": "mcp-obsidian-tools",
-	"version": "1.0.0",
+	"version": "1.1.0",
 	"description": "Model Context Protocol server for Obsidian Vaults with write/append capabilities",
 	"author": "Scott Everitt",
 	"contributors": [

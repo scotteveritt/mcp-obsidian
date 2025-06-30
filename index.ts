@@ -134,6 +134,29 @@ const AppendNoteArgsSchema = z.object({
   content: z.string(),
 })
 
+const ExtractLinksArgsSchema = z.object({
+  path: z.string(),
+})
+
+const FindBacklinksArgsSchema = z.object({
+  path: z.string(),
+})
+
+const ExtractMetadataArgsSchema = z.object({
+  path: z.string(),
+})
+
+const SearchByTagsArgsSchema = z.object({
+  tags: z.array(z.string()),
+  matchAll: z.boolean().optional().default(false),
+})
+
+const CreateLinkArgsSchema = z.object({
+  fromPath: z.string(),
+  toPath: z.string(),
+  linkText: z.string().optional(),
+})
+
 const ToolInputSchema = ToolSchema.shape.inputSchema
 type ToolInput = z.infer<typeof ToolInputSchema>
 
@@ -149,6 +172,105 @@ const server = new Server(
     },
   }
 )
+
+/**
+ * Extract wiki links and markdown links from a note's content
+ */
+function extractLinks(content: string): { wikiLinks: string[], markdownLinks: string[] } {
+  const wikiLinks: string[] = []
+  const markdownLinks: string[] = []
+  
+  // Extract [[wiki links]]
+  const wikiLinkRegex = /\[\[([^\]]+)\]\]/g
+  let match
+  while ((match = wikiLinkRegex.exec(content)) !== null) {
+    // Handle aliases: [[note|alias]]
+    const link = match[1].split('|')[0].trim()
+    if (!wikiLinks.includes(link)) {
+      wikiLinks.push(link)
+    }
+  }
+  
+  // Extract [markdown](links)
+  const markdownLinkRegex = /\[([^\]]+)\]\(([^)]+)\)/g
+  while ((match = markdownLinkRegex.exec(content)) !== null) {
+    const link = match[2].trim()
+    // Only include internal links (ending with .md)
+    if (link.endsWith('.md') && !link.startsWith('http')) {
+      if (!markdownLinks.includes(link)) {
+        markdownLinks.push(link)
+      }
+    }
+  }
+  
+  return { wikiLinks, markdownLinks }
+}
+
+/**
+ * Extract frontmatter and inline metadata from a note
+ */
+function extractMetadata(content: string): { frontmatter: Record<string, any>, inlineFields: Record<string, string>, tags: string[] } {
+  const result = {
+    frontmatter: {} as Record<string, any>,
+    inlineFields: {} as Record<string, string>,
+    tags: [] as string[]
+  }
+  
+  // Extract frontmatter
+  const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/)
+  if (frontmatterMatch) {
+    try {
+      // Simple YAML parsing (for basic key-value pairs)
+      const yamlContent = frontmatterMatch[1]
+      const lines = yamlContent.split('\n')
+      for (const line of lines) {
+        const colonIndex = line.indexOf(':')
+        if (colonIndex > 0) {
+          const key = line.substring(0, colonIndex).trim()
+          const value = line.substring(colonIndex + 1).trim()
+          result.frontmatter[key] = value
+        }
+      }
+    } catch (e) {
+      // Ignore parsing errors
+    }
+  }
+  
+  // Extract inline fields (Key:: Value)
+  const inlineFieldRegex = /([^:\n]+)::([^\n]+)/g
+  let match
+  while ((match = inlineFieldRegex.exec(content)) !== null) {
+    const key = match[1].trim()
+    const value = match[2].trim()
+    result.inlineFields[key] = value
+  }
+  
+  // Extract tags (#tag)
+  const tagRegex = /#[\w-]+/g
+  while ((match = tagRegex.exec(content)) !== null) {
+    const tag = match[0]
+    if (!result.tags.includes(tag)) {
+      result.tags.push(tag)
+    }
+  }
+  
+  // Extract tags from frontmatter
+  if (result.frontmatter.tags) {
+    const tagsValue = result.frontmatter.tags
+    const frontmatterTags = (typeof tagsValue === 'string' ? tagsValue.split(',') : [])
+      .map((t: string) => t.trim())
+      .filter((t: string) => t)
+      .map((t: string) => t.startsWith('#') ? t : `#${t}`)
+    
+    for (const tag of frontmatterTags) {
+      if (!result.tags.includes(tag)) {
+        result.tags.push(tag)
+      }
+    }
+  }
+  
+  return result
+}
 
 /**
  * Search for notes in the allowed directories that match the query.
@@ -232,6 +354,45 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           "The path should be relative to the vault root and end with .md extension. " +
           "Content is added with a newline separator if the file has existing content.",
         inputSchema: zodToJsonSchema(AppendNoteArgsSchema) as ToolInput,
+      },
+      {
+        name: "extract_links",
+        description:
+          "Extract all wiki links ([[note]]) and markdown links from a note. " +
+          "Returns both types of links found in the note content. Useful for understanding " +
+          "note connections and building a knowledge graph.",
+        inputSchema: zodToJsonSchema(ExtractLinksArgsSchema) as ToolInput,
+      },
+      {
+        name: "find_backlinks",
+        description:
+          "Find all notes that link to a specific note. Searches through all notes in the vault " +
+          "to find wiki links and markdown links pointing to the specified note. Essential for " +
+          "understanding how knowledge connects backwards.",
+        inputSchema: zodToJsonSchema(FindBacklinksArgsSchema) as ToolInput,
+      },
+      {
+        name: "extract_metadata",
+        description:
+          "Extract frontmatter, inline fields (key:: value), and tags from a note. " +
+          "Returns structured metadata including YAML frontmatter, Dataview-style inline fields, " +
+          "and all #tags found in the note.",
+        inputSchema: zodToJsonSchema(ExtractMetadataArgsSchema) as ToolInput,
+      },
+      {
+        name: "search_by_tags",
+        description:
+          "Search for notes containing specific tags. Can match all tags (AND) or any tag (OR). " +
+          "Tags can be specified with or without the # prefix. Searches both inline tags and " +
+          "frontmatter tags.",
+        inputSchema: zodToJsonSchema(SearchByTagsArgsSchema) as ToolInput,
+      },
+      {
+        name: "create_link",
+        description:
+          "Create or update a wiki link from one note to another. Adds [[target]] or [[target|linkText]] " +
+          "at the end of the source note. Useful for programmatically building connections between thoughts.",
+        inputSchema: zodToJsonSchema(CreateLinkArgsSchema) as ToolInput,
       },
     ],
   }
@@ -351,6 +512,206 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         
         return {
           content: [{ type: "text", text: `Successfully appended to note at ${parsed.data.path}` }],
+        }
+      }
+      case "extract_links": {
+        const parsed = ExtractLinksArgsSchema.safeParse(args)
+        if (!parsed.success) {
+          throw new Error(`Invalid arguments for extract_links: ${parsed.error}`)
+        }
+        
+        const fullPath = path.join(vaultDirectories[0], parsed.data.path)
+        const validPath = await validatePath(fullPath)
+        const content = await fs.readFile(validPath, "utf-8")
+        
+        const links = extractLinks(content)
+        
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              wikiLinks: links.wikiLinks,
+              markdownLinks: links.markdownLinks,
+              totalLinks: links.wikiLinks.length + links.markdownLinks.length
+            }, null, 2)
+          }],
+        }
+      }
+      case "find_backlinks": {
+        const parsed = FindBacklinksArgsSchema.safeParse(args)
+        if (!parsed.success) {
+          throw new Error(`Invalid arguments for find_backlinks: ${parsed.error}`)
+        }
+        
+        const targetPath = parsed.data.path
+        const targetNote = targetPath.replace(/\.md$/, "")
+        const backlinks: string[] = []
+        
+        // Search all notes for links to this note
+        async function searchForBacklinks(basePath: string, currentPath: string) {
+          const entries = await fs.readdir(currentPath, { withFileTypes: true })
+          
+          for (const entry of entries) {
+            const fullPath = path.join(currentPath, entry.name)
+            
+            try {
+              await validatePath(fullPath)
+              
+              if (entry.name.endsWith(".md")) {
+                const content = await fs.readFile(fullPath, "utf-8")
+                const links = extractLinks(content)
+                
+                // Check wiki links
+                for (const link of links.wikiLinks) {
+                  if (link === targetNote || link === targetPath) {
+                    const relativePath = fullPath.replace(basePath, "")
+                    if (!backlinks.includes(relativePath)) {
+                      backlinks.push(relativePath)
+                    }
+                    break
+                  }
+                }
+                
+                // Check markdown links
+                for (const link of links.markdownLinks) {
+                  if (link === targetPath || link.endsWith(`/${targetPath}`)) {
+                    const relativePath = fullPath.replace(basePath, "")
+                    if (!backlinks.includes(relativePath)) {
+                      backlinks.push(relativePath)
+                    }
+                    break
+                  }
+                }
+              }
+              
+              if (entry.isDirectory()) {
+                await searchForBacklinks(basePath, fullPath)
+              }
+            } catch (error) {
+              // Skip invalid paths
+              continue
+            }
+          }
+        }
+        
+        await Promise.all(vaultDirectories.map((dir) => searchForBacklinks(dir, dir)))
+        
+        return {
+          content: [{
+            type: "text",
+            text: backlinks.length > 0 
+              ? `Found ${backlinks.length} backlinks:\n${backlinks.join("\n")}`
+              : "No backlinks found"
+          }],
+        }
+      }
+      case "extract_metadata": {
+        const parsed = ExtractMetadataArgsSchema.safeParse(args)
+        if (!parsed.success) {
+          throw new Error(`Invalid arguments for extract_metadata: ${parsed.error}`)
+        }
+        
+        const fullPath = path.join(vaultDirectories[0], parsed.data.path)
+        const validPath = await validatePath(fullPath)
+        const content = await fs.readFile(validPath, "utf-8")
+        
+        const metadata = extractMetadata(content)
+        
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              frontmatter: metadata.frontmatter,
+              inlineFields: metadata.inlineFields,
+              tags: metadata.tags
+            }, null, 2)
+          }],
+        }
+      }
+      case "search_by_tags": {
+        const parsed = SearchByTagsArgsSchema.safeParse(args)
+        if (!parsed.success) {
+          throw new Error(`Invalid arguments for search_by_tags: ${parsed.error}`)
+        }
+        
+        const searchTags = parsed.data.tags.map(t => t.startsWith('#') ? t : `#${t}`)
+        const matchAll = parsed.data.matchAll || false
+        const results: string[] = []
+        
+        async function searchByTags(basePath: string, currentPath: string) {
+          const entries = await fs.readdir(currentPath, { withFileTypes: true })
+          
+          for (const entry of entries) {
+            const fullPath = path.join(currentPath, entry.name)
+            
+            try {
+              await validatePath(fullPath)
+              
+              if (entry.name.endsWith(".md")) {
+                const content = await fs.readFile(fullPath, "utf-8")
+                const metadata = extractMetadata(content)
+                
+                const hasMatch = matchAll
+                  ? searchTags.every(tag => metadata.tags.includes(tag))
+                  : searchTags.some(tag => metadata.tags.includes(tag))
+                
+                if (hasMatch) {
+                  results.push(fullPath.replace(basePath, ""))
+                }
+              }
+              
+              if (entry.isDirectory()) {
+                await searchByTags(basePath, fullPath)
+              }
+            } catch (error) {
+              continue
+            }
+          }
+        }
+        
+        await Promise.all(vaultDirectories.map((dir) => searchByTags(dir, dir)))
+        
+        return {
+          content: [{
+            type: "text",
+            text: results.length > 0
+              ? `Found ${results.length} notes with tags ${searchTags.join(", ")}:\n${results.join("\n")}`
+              : `No notes found with tags ${searchTags.join(", ")}`
+          }],
+        }
+      }
+      case "create_link": {
+        const parsed = CreateLinkArgsSchema.safeParse(args)
+        if (!parsed.success) {
+          throw new Error(`Invalid arguments for create_link: ${parsed.error}`)
+        }
+        
+        const fromPath = path.join(vaultDirectories[0], parsed.data.fromPath)
+        const validFromPath = await validatePath(fromPath)
+        
+        // Read existing content
+        let content = ""
+        try {
+          content = await fs.readFile(validFromPath, "utf-8")
+        } catch {
+          // File doesn't exist yet
+        }
+        
+        // Create the link
+        const targetNote = parsed.data.toPath.replace(/\.md$/, "")
+        const linkText = parsed.data.linkText
+          ? `[[${targetNote}|${parsed.data.linkText}]]`
+          : `[[${targetNote}]]`
+        
+        // Append the link
+        const newContent = content ? `${content}\n\n${linkText}` : linkText
+        await fs.writeFile(validFromPath, newContent, "utf-8")
+        
+        return {
+          content: [{
+            type: "text",
+            text: `Successfully created link from ${parsed.data.fromPath} to ${parsed.data.toPath}`
+          }],
         }
       }
       default:
