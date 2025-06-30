@@ -1,13 +1,35 @@
 {
-	"name": "mcp-obsidian",
+	"name": "mcp-obsidian-tools",
 	"version": "1.0.0",
-	"description": "Model Context Protocol server for Obsidian Vaults",
-	"author": "Henry Mao (https://calclavia.com)",
+	"description": "Model Context Protocol server for Obsidian Vaults with write/append capabilities",
+	"author": "Scott Everitt",
+	"contributors": [
+		"Henry Mao (https://calclavia.com)"
+	],
 	"main": "main.js",
 	"type": "module",
 	"bin": {
-		"mcp-obsidian": "dist/index.js"
+		"mcp-obsidian-tools": "dist/index.js"
 	},
+	"keywords": [
+		"mcp",
+		"model-context-protocol",
+		"obsidian",
+		"markdown",
+		"notes",
+		"claude",
+		"write",
+		"append"
+	],
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/scotteveritt/mcp-obsidian.git"
+	},
+	"homepage": "https://github.com/scotteveritt/mcp-obsidian#readme",
+	"bugs": {
+		"url": "https://github.com/scotteveritt/mcp-obsidian/issues"
+	},
+	"license": "MIT",
 	"files": [
 		"dist"
 	],
